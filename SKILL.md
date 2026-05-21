@@ -249,7 +249,7 @@ Need to find something?
 │   (types: todos, messages, documents, comments, cards, uploads)
 │   Note: Defaults to active status; use --status archived for archived items
 │   ⚠ No assignee data — cannot filter by person; use reports assigned instead
-├── Full-text search? → basecamp search "query" --json
+├── Full-text search? → ⚠ BROKEN — see Search below. Prefer workarounds.
 └── Have a URL? → basecamp url parse "<url>" --json
 ```
 
@@ -780,10 +780,20 @@ basecamp people remove <id> --project <project>    # Remove from project
 
 ### Search
 
+⚠ **`basecamp search` is broken** (v0.7.2). It consistently times out with no results or errors. Tracked in https://github.com/basecamp/basecamp-cli/issues/470
+
+Do not attempt `basecamp search` — it will waste time and return nothing.
+
+**Workarounds:**
+1. **List and filter** — Use `basecamp todos list`, `basecamp messages list`, `basecamp recordings <type>`, etc. with `--jq` to filter results client-side.
+2. **Narrow by project** — If you know which project, scope with `--in <project>` to reduce result size.
+3. **Ask the user** — When search would be the only way to find something, push back and ask the user to narrow it down (project, type, approximate date) or find it themselves in the Basecamp UI. This is often faster than any workaround.
+
 ```bash
-basecamp search "query" --json                    # Full-text search
-basecamp search "query" --sort updated_at --limit 20
-basecamp search metadata --json                   # Available search scopes
+# These work; search doesn't
+basecamp todos list --in <project> --jq '.data[] | select(.title | test("keyword"; "i"))'
+basecamp recordings messages --jq '.data[] | select(.subject | test("keyword"; "i"))'
+basecamp search metadata --json                   # Available search scopes (metadata call works)
 ```
 
 ### Generic Show
@@ -1020,3 +1030,4 @@ project-repo/
 - Use official tools before building your own. basecamp-cli already provides full API coverage, agent skill, structured output, and auto token refresh.
 - Per-repo config (`.basecamp/config.json`) is a CLI convenience. Source of truth for project scope is AGENTS.md — use a Project Context table.
 - The CLI supports multiple projects via `--in <project_id>` and accounts via `--account <account_id>`.
+- `basecamp search` is broken — times out consistently (v0.7.2, issue #470). Don't attempt it. Use list+filter workarounds (`--jq`) or ask the user to narrow down the scope instead of searching.
