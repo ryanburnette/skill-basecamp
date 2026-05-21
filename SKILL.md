@@ -97,8 +97,8 @@ Full CLI coverage: 155 endpoints across todos, cards, messages, files, schedule,
 
 ### Content Style
 
-- **Todo titles**: Use sentence case (proper capitalization, no trailing period). Apply the strip-ai-tells skill to clean up user input — no AI formatting patterns like em-dashes, emoji, or over-bolding.
-- **Comments**: Use full sentences with standard punctuation. Apply the strip-ai-tells skill for natural, non-AI prose.
+- **Todo titles**: Use sentence case (proper capitalization, no trailing period). No AI formatting patterns like em-dashes, emoji, or over-bolding.
+- **Comments**: Use full sentences with standard punctuation. Natural, non-AI prose.
 
 ### Known Issues
 
@@ -990,7 +990,7 @@ This creates `.basecamp/config.json`. Commit it to git.
 Include:
 
 - **Project Context** — table of projects (ID, account, purpose). Source of truth for scope.
-- **Before Actions** — load basecamp skill, use strip-ai-tells for content
+- **Before Actions** — load basecamp skill
 - **Setup** — install location, auth command
 - **Commands** — command table for common operations
 - **Lessons** — project-specific lessons
