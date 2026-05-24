@@ -99,6 +99,7 @@ Full CLI coverage: 155 endpoints across todos, cards, messages, files, schedule,
 
 - **Todo titles**: Use sentence case (proper capitalization, no trailing period). No AI formatting patterns like em-dashes, emoji, or over-bolding.
 - **Comments**: Use full sentences with standard punctuation. Natural, non-AI prose.
+- **Comment formatting**: The content field converts Markdown to HTML. Use bash `$'...'` quoting for newlines (`$'Line one.\nLine two.'`); double-quoted `"\n"` renders as literal text. Single newlines collapse to a space — use `<br>` for a visible line break.
 
 ### Known Issues
 
