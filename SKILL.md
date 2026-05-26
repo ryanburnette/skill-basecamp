@@ -105,6 +105,8 @@ Full CLI coverage: 155 endpoints across todos, cards, messages, files, schedule,
 
 - `basecamp todos update --due` is broken in v0.7.2 (returns ok but doesn't update the due date). Workaround: update due dates in the Basecamp web UI, or recreate the todo.
 - When shifting a due date, calculate from the current due date, not from today. E.g. "push back 1 week" on an Apr 28 item means May 5.
+- `basecamp todos list` returns 0 todos when they live directly under the Todoset instead of a Todolist (Basecamp 5 "listless todos"). The command only queries todolists. Workaround: use `basecamp recordings todos --in <project>` or `basecamp assignments` to find these todos. Always create todos with `--list <todolist>` to avoid this gap. Tracked in https://github.com/basecamp/basecamp-cli/issues/474
+- `basecamp todos show` and `basecamp show` strip the `steps` field — subtasks on a todo are not visible through standard show commands. `basecamp cards steps <todo_id>` also fails ("Not Found") because it hits a card-table-specific endpoint. Workaround: use `basecamp api get` (see Todo Subtasks section). The create/complete/delete/update commands under `cards step` do work with todo IDs.
 
 ### Output Modes
 
@@ -466,6 +468,25 @@ basecamp unassign <id> [id...] --step --from <person> --in <project> # Remove st
 basecamp todos position <id> --to 1                     # Move to top
 basecamp todos position <id> --to 1 --list <id|name|url> # Move to different list
 basecamp todos sweep --overdue --complete --comment "Done" --in <project>
+```
+
+**Todo Subtasks (Steps)** — Basecamp 5 lets you add subtasks (checklist items) to todos. They use the same `Kanban::Step` type as card steps, parented to a Todo instead of a Card. The CLI's card step commands work on todo subtasks, but the naming is misleading (`--card` flag accepts a todo ID).
+
+```bash
+basecamp cards step create "Title" --card <todo_id> --in <project>   # Add subtask to todo
+basecamp cards step complete <step_id> --in <project>                  # Complete subtask
+basecamp cards step uncomplete <step_id> --in <project>                # Reopen subtask
+basecamp cards step update <step_id> --title "New" --in <project>     # Rename subtask
+basecamp cards step delete <step_id> --in <project>                    # Delete subtask
+basecamp cards step move <step_id> --position 2 --in <project>         # Reorder subtask
+basecamp assign <step_id> --step --to <person> --in <project>         # Assign subtask
+basecamp unassign <step_id> --step --from <person> --in <project>     # Unassign subtask
+```
+
+**Reading subtasks:** `basecamp todos show` and `basecamp show` both strip the `steps` field. Use `basecamp api get` to read subtasks (uses the CLI's own auth with auto token refresh):
+
+```bash
+basecamp api get "/buckets/<project_id>/todos/<todo_id>.json" --jq '.data.steps[] | {id, title, completed}'
 ```
 
 **Flags:** `--assignee` (todos only - not available on cards/messages), `--status` (completed/incomplete), `--overdue`, `--list`, `--due`, `--limit`, `--all`
