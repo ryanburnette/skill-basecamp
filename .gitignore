@@ -1,0 +1,3 @@
+# Machine-local install marker written by the basecamp CLI's `skill install`.
+# Records which CLI version provisioned this skill; not source.
+.installed-version
