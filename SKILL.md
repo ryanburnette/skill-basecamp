@@ -107,6 +107,7 @@ Full CLI coverage: 155 endpoints across todos, cards, messages, files, schedule,
 - When shifting a due date, calculate from the current due date, not from today. E.g. "push back 1 week" on an Apr 28 item means May 5.
 - `basecamp todos list` returns 0 todos when they live directly under the Todoset instead of a Todolist (Basecamp 5 "listless todos"). The command only queries todolists. Workaround: use `basecamp recordings todos --in <project>` or `basecamp assignments` to find these todos. Always create todos with `--list <todolist>` to avoid this gap. Tracked in https://github.com/basecamp/basecamp-cli/issues/474
 - `basecamp todos show` and `basecamp show` strip the `steps` field — subtasks on a todo are not visible through standard show commands. `basecamp cards steps <todo_id>` also fails ("Not Found") because it hits a card-table-specific endpoint. Workaround: use `basecamp api get` (see Todo Subtasks section). The create/complete/delete/update commands under `cards step` do work with todo IDs.
+- The CLI does not expose Basecamp's "let know when done" feature on todos (the API field is `completion_subscriber_ids`). It does not appear in todo create/update flags. Workaround: use `basecamp api put` (see Todo Completion Subscribers section). Do not bake "let X know when done" into the description as a workaround — set the actual completion subscriber so Basecamp delivers the notification.
 
 ### Output Modes
 
@@ -490,6 +491,21 @@ basecamp api get "/buckets/<project_id>/todos/<todo_id>.json" --jq '.data.steps[
 ```
 
 **Flags:** `--assignee` (todos only - not available on cards/messages), `--status` (completed/incomplete), `--overdue`, `--list`, `--due`, `--limit`, `--all`
+
+**Todo Completion Subscribers ("let know when done")** — Basecamp's "let know when done" feature notifies specific people when a todo is completed. The API field is `completion_subscriber_ids` (array of person IDs). The CLI does not expose this on `basecamp todo` or `basecamp todos update`. Use `basecamp api put` to set it.
+
+```bash
+# Look up the person ID
+basecamp people list --project <project> --jq '.data[] | select(.name | test("Heath"; "i")) | {id, name}'
+
+# Set completion subscribers via raw PUT.
+# IMPORTANT: PUT replaces the full record. Re-pass content, description,
+# assignee_ids, and due_on — fields you omit will be cleared.
+basecamp api put "/buckets/<project_id>/todos/<todo_id>.json" \
+  --data '{"content":"Title","description":"<div>Body</div>","assignee_ids":[<id>],"completion_subscriber_ids":[<id>],"due_on":"YYYY-MM-DD"}'
+```
+
+Verify with `basecamp api get "/buckets/<project_id>/todos/<todo_id>.json" --jq '.data.completion_subscribers'`.
 
 ### Todolists
 
