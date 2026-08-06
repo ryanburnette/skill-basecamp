@@ -103,11 +103,9 @@ Full CLI coverage: 155 endpoints across todos, cards, messages, files, schedule,
 
 ### Known Issues
 
-- `basecamp todos update --due` is broken in v0.7.2 (returns ok but doesn't update the due date). Workaround: update due dates in the Basecamp web UI, or recreate the todo.
 - When shifting a due date, calculate from the current due date, not from today. E.g. "push back 1 week" on an Apr 28 item means May 5.
-- `basecamp todos list` returns 0 todos when they live directly under the Todoset instead of a Todolist (Basecamp 5 "listless todos"). The command only queries todolists. Workaround: use `basecamp recordings todos --in <project>` or `basecamp assignments` to find these todos. Always create todos with `--list <todolist>` to avoid this gap. Tracked in https://github.com/basecamp/basecamp-cli/issues/474
-- `basecamp todos show` and `basecamp show` strip the `steps` field — subtasks on a todo are not visible through standard show commands. `basecamp cards steps <todo_id>` also fails ("Not Found") because it hits a card-table-specific endpoint. Workaround: use `basecamp api get` (see Todo Subtasks section). The create/complete/delete/update commands under `cards step` do work with todo IDs.
-- The CLI does not expose Basecamp's "let know when done" feature on todos (the API field is `completion_subscriber_ids`). It does not appear in todo create/update flags. Workaround: use `basecamp api put` (see Todo Completion Subscribers section). Do not bake "let X know when done" into the description as a workaround — set the actual completion subscriber so Basecamp delivers the notification.
+- `basecamp show` (the generic command) returns `steps: null` on a todo that has subtasks. `basecamp todos show` reports them correctly as of v0.9.0 — prefer the typed command. `basecamp cards steps <todo_id>` still fails ("Not Found") because it hits a card-table-specific endpoint; the create/complete/delete/update commands under `cards step` do work with todo IDs.
+- `basecamp todos show` omits null-valued fields rather than emitting them. A missing `due_on` means no due date, not a stripped field.
 
 ### Output Modes
 
@@ -253,7 +251,7 @@ Need to find something?
 │   (types: todos, messages, documents, comments, cards, uploads)
 │   Note: Defaults to active status; use --status archived for archived items
 │   ⚠ No assignee data — cannot filter by person; use reports assigned instead
-├── Full-text search? → ⚠ BROKEN — see Search below. Prefer workarounds.
+├── Full-text search? → basecamp search "<query>" --json (see Search below)
 └── Have a URL? → basecamp url parse "<url>" --json
 ```
 
@@ -458,6 +456,9 @@ basecamp todos list --overdue --in <project>            # Overdue only
 basecamp todos list --status completed --in <project>   # Completed
 basecamp todos list --list <todolist_id> --in <project> # In specific list
 basecamp todo "Task" --in <project> --list <list> --assignee me --due tomorrow
+basecamp todos create "Task" --in <project> --loose               # Directly on the todoset, outside any list
+basecamp todos update <id> --due "next friday" --starts-on <date> # Natural language accepted on update
+basecamp todos update <id> --no-due --no-description              # Clear fields
 basecamp done <id> [id...]                              # Complete (multiple OK)
 basecamp reopen <id>                                    # Uncomplete
 basecamp assign <id> [id...] --to <person> --in <project>       # Assign to-do (multiple OK)
@@ -484,28 +485,25 @@ basecamp assign <step_id> --step --to <person> --in <project>         # Assign s
 basecamp unassign <step_id> --step --from <person> --in <project>     # Unassign subtask
 ```
 
-**Reading subtasks:** `basecamp todos show` and `basecamp show` both strip the `steps` field. Use `basecamp api get` to read subtasks (uses the CLI's own auth with auto token refresh):
+**Reading subtasks:** `basecamp todos show` returns the `steps` array as of v0.9.0, and `--md` renders them as a checklist. The generic `basecamp show` still returns `steps: null`, so use the typed command:
 
 ```bash
-basecamp api get "/buckets/<project_id>/todos/<todo_id>.json" --jq '.data.steps[] | {id, title, completed}'
+basecamp todos show <todo_id> --in <project> --jq '.data.steps[] | {id, title, completed}'
 ```
 
 **Flags:** `--assignee` (todos only - not available on cards/messages), `--status` (completed/incomplete), `--overdue`, `--list`, `--due`, `--limit`, `--all`
 
-**Todo Completion Subscribers ("let know when done")** — Basecamp's "let know when done" feature notifies specific people when a todo is completed. The API field is `completion_subscriber_ids` (array of person IDs). The CLI does not expose this on `basecamp todo` or `basecamp todos update`. Use `basecamp api put` to set it.
+**Todo Completion Subscribers ("let know when done")** — Basecamp's "let know when done" feature notifies specific people when a todo is completed. As of v0.9.0 the CLI exposes this directly; the old raw-PUT workaround is no longer needed.
 
 ```bash
-# Look up the person ID
-basecamp people list --project <project> --jq '.data[] | select(.name | test("Heath"; "i")) | {id, name}'
-
-# Set completion subscribers via raw PUT.
-# IMPORTANT: PUT replaces the full record. Re-pass content, description,
-# assignee_ids, and due_on — fields you omit will be cleared.
-basecamp api put "/buckets/<project_id>/todos/<todo_id>.json" \
-  --data '{"content":"Title","description":"<div>Body</div>","assignee_ids":[<id>],"completion_subscriber_ids":[<id>],"due_on":"YYYY-MM-DD"}'
+basecamp todos create "Title" --in <project> --list <list> --notify-on-completion "Heath"
+basecamp todos update <id> --in <project> --notify-on-completion "Heath,Sarah"   # names or IDs
+basecamp todos update <id> --in <project> --no-notify-on-completion             # clear
 ```
 
-Verify with `basecamp api get "/buckets/<project_id>/todos/<todo_id>.json" --jq '.data.completion_subscribers'`.
+Verify with `basecamp todos show <id> --in <project> --jq '.data.completion_subscribers'`.
+
+Do not bake "let X know when done" into the description — set the actual completion subscriber so Basecamp delivers the notification.
 
 ### Todolists
 
@@ -818,20 +816,25 @@ basecamp people remove <id> --project <project>    # Remove from project
 
 ### Search
 
-⚠ **`basecamp search` is broken** (v0.7.2). It consistently times out with no results or errors. Tracked in https://github.com/basecamp/basecamp-cli/issues/470
-
-Do not attempt `basecamp search` — it will waste time and return nothing.
-
-**Workarounds:**
-1. **List and filter** — Use `basecamp todos list`, `basecamp messages list`, `basecamp recordings <type>`, etc. with `--jq` to filter results client-side.
-2. **Narrow by project** — If you know which project, scope with `--in <project>` to reduce result size.
-3. **Ask the user** — When search would be the only way to find something, push back and ask the user to narrow it down (project, type, approximate date) or find it themselves in the Basecamp UI. This is often faster than any workaround.
+Full-text search across all content. It was broken through v0.7.2 (timed out, returned nothing) and works as of v0.9.0 — issue #470 is fixed.
 
 ```bash
-# These work; search doesn't
+basecamp search "<query>" --account <id>                  # --account is required unless config sets account_id
+basecamp search "<query>" --in <project> --type todo      # Scope by project and content type
+basecamp search "<query>" --since last_30_days            # last_7_days, last_30_days, last_90_days, last_12_months, forever
+basecamp search "<query>" --creator me --file-type pdf    # Filter by author or attachment type
+basecamp search "<query>" --sort recency                  # relevance (default) or recency
+basecamp search "<query>" --all                           # Past the default 20-result cap
+basecamp search metadata --json                           # Recording and file types search accepts
+```
+
+Results cap at 20 by default and the summary reports the true total (`Showing 20 of 2942 results`) — pass `--all` or `--limit` when the count matters.
+
+When search returns too much, narrow with `--in`/`--type`/`--since` before falling back to list-and-filter:
+
+```bash
 basecamp todos list --in <project> --jq '.data[] | select(.title | test("keyword"; "i"))'
 basecamp recordings messages --jq '.data[] | select(.subject | test("keyword"; "i"))'
-basecamp search metadata --json                   # Available search scopes (metadata call works)
 ```
 
 ### Generic Show
@@ -1008,7 +1011,7 @@ When creating a new repo for Basecamp project integration:
 
 ```bash
 # Install (webi pattern)
-VER=0.7.2
+VER=0.9.0
 curl -fsSL -o /tmp/basecamp.tar.gz \
   https://github.com/basecamp/basecamp-cli/releases/download/v${VER}/basecamp_${VER}_darwin_arm64.tar.gz
 mkdir -p ~/.local/opt/basecamp-v${VER}/bin
@@ -1017,10 +1020,15 @@ ln -sf ~/.local/opt/basecamp-v${VER}/bin/basecamp ~/.local/bin/basecamp
 rm /tmp/basecamp.tar.gz
 basecamp --version
 
+# Already installed? v0.9.0 self-updates
+basecamp upgrade
+
 # Authenticate
 basecamp auth login --scope full
 basecamp auth status
 ```
+
+As of v0.9.0 a bare `basecamp auth login` requests `full` scope by default on Basecamp-hosted OAuth. Earlier versions defaulted to read-only there, so every write returned "access denied". Pass `--scope read` if you want a read-only token. Existing stored credentials keep whatever scope they were granted — re-login to change it.
 
 ### 2. Create Per-Repo Config
 
@@ -1068,4 +1076,4 @@ project-repo/
 - Use official tools before building your own. basecamp-cli already provides full API coverage, agent skill, structured output, and auto token refresh.
 - Per-repo config (`.basecamp/config.json`) is a CLI convenience. Source of truth for project scope is AGENTS.md — use a Project Context table.
 - The CLI supports multiple projects via `--in <project_id>` and accounts via `--account <account_id>`.
-- `basecamp search` is broken — times out consistently (v0.7.2, issue #470). Don't attempt it. Use list+filter workarounds (`--jq`) or ask the user to narrow down the scope instead of searching.
+- Re-check documented CLI bugs after upgrading. Search, `todos update --due`, listless todos, and completion subscribers were all worked around here until v0.9.0 fixed them; stale workarounds cost more than the bugs did.
