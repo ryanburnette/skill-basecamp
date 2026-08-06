@@ -73,9 +73,15 @@ invocable: true
 argument-hint: "[action] [args...]"
 ---
 
-# /basecamp - Basecamp Workflow Command
+# basecamp — work Basecamp through the CLI
 
 Full CLI coverage across todos, cards, messages, files, schedule, check-ins, timeline, recordings, templates, webhooks, subscriptions, lineup, chat, gauges, assignments, notifications, and accounts.
+
+## How to use this skill
+
+Your job is to write `basecamp` CLI commands. This file is the reference for doing that correctly; the CLI does the work.
+
+This skill is loaded directly by whatever harness you are running in — Claude Code, opencode, pi, or another. It is not installed or managed by the CLI. Do not run `basecamp setup claude`, `basecamp skill install`, or any other command that links or provisions a skill: those install upstream's copy over this one and overwrite local changes. `basecamp doctor` reporting "Skill not linked" is the expected state, not a problem to fix. Its "Global Config: not found" and "Shell Completion: not installed" warnings are likewise normal — see invariant 6 for how account scope is supplied instead.
 
 ## Agent Invariants
 

@@ -19,7 +19,9 @@ Note: v0.9.0 changed `basecamp auth login` to request `full` scope by default on
 
 ## Usage
 
-This is an [Agent Skills](https://agentskills.io/) compatible skill. Load it with your agent harness and invoke via `skill:basecamp`.
+This is an [Agent Skills](https://agentskills.io/) compatible skill. Load it with your agent harness — Claude Code, opencode, pi, or another — and invoke via `skill:basecamp`. It gives the agent what it needs to write correct `basecamp` CLI commands.
+
+Load it directly. Do not provision it with `basecamp setup claude` or `basecamp skill install`; those install upstream's copy over this fork. `basecamp doctor` reporting "Skill not linked" is expected.
 
 ## Structure
 
