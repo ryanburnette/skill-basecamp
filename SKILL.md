@@ -91,9 +91,11 @@ Full CLI coverage across todos, cards, messages, files, schedule, check-ins, tim
    - **`@sgid:VALUE`** — inline SGID embed for pipeline composability
    - **`@Name` / `@First.Last`** — fuzzy name resolution (may be ambiguous)
    For todos, documents, and cards, content is sent as-is — use plain text or HTML directly.
-6. **Project scope is mandatory for most commands** — via `--in <project>` or `.basecamp/config.json`. Cross-project exceptions: `basecamp reports assigned` for assigned work, `basecamp assignments` for structured assignment views, `basecamp reports overdue` for overdue todos, `basecamp reports schedule` for upcoming schedule across all projects, `basecamp recordings <type>` for browsing by type, `basecamp notifications` for notifications, `basecamp gauges list` for account-wide gauges.
-7. **Never recreate Basecamp items** — move, update, or reposition existing items. Todos, messages, comments, and todolists have history (comments, completions, edits). Creating a new one instead of moving loses all that context. Use `basecamp todos position <id> --list <target>` to move a todo to a different todolist.
-8. **Always include assignee and due date** when showing todo items. Use `--md` flag which surfaces both by default.
+6. **Account scope is mandatory for every command** — via `--account <id>` or an `account_id` in config. Without one, even account-wide commands fail with `--account is required (or set account_id in config)` and code `usage`. There is no default; `basecamp accounts list` needs no account and is the way to discover IDs. To stop passing the flag, run `basecamp accounts use <id>` or `basecamp config set account_id <id>`. Check with `basecamp doctor --json` — "Account Access: skip" means no account is configured.
+7. **Project scope is mandatory for most commands** — via `--in <project>` or `.basecamp/config.json`. Cross-project exceptions: `basecamp reports assigned` for assigned work, `basecamp assignments` for structured assignment views, `basecamp reports overdue` for overdue todos, `basecamp reports schedule` for upcoming schedule across all projects, `basecamp recordings <type>` for browsing by type, `basecamp notifications` for notifications, `basecamp gauges list` for account-wide gauges.
+8. **Never recreate Basecamp items** — move, update, or reposition existing items. Todos, messages, comments, and todolists have history (comments, completions, edits). Creating a new one instead of moving loses all that context. Use `basecamp todos position <id> --list <target>` to move a todo to a different todolist.
+9. **Always include assignee and due date** when showing todo items. Use `--md` flag which surfaces both by default.
+10. **Shift due dates from the current due date, not from today** — "push back 1 week" on an Apr 28 item means May 5. Read the existing `due_on` before computing the new one.
 
 ### Content Style
 
@@ -103,7 +105,6 @@ Full CLI coverage across todos, cards, messages, files, schedule, check-ins, tim
 
 ### Known Issues
 
-- When shifting a due date, calculate from the current due date, not from today. E.g. "push back 1 week" on an Apr 28 item means May 5.
 - `basecamp show` (the generic command) returns `steps: null` on a todo that has subtasks. `basecamp todos show` reports them correctly as of v0.9.0 — prefer the typed command. `basecamp cards steps <todo_id>` still fails ("Not Found") because it hits a card-table-specific endpoint; the create/complete/delete/update commands under `cards step` do work with todo IDs.
 - `basecamp todos show` omits null-valued fields rather than emitting them. A missing `due_on` means no due date, not a stripped field.
 
@@ -819,7 +820,7 @@ basecamp people remove <id> --project <project>    # Remove from project
 Full-text search across all content. It was broken through v0.7.2 (timed out, returned nothing) and works as of v0.9.0 — issue #470 is fixed.
 
 ```bash
-basecamp search "<query>" --account <id>                  # --account is required unless config sets account_id
+basecamp search "<query>" --account <id>                  # Account scope required, as everywhere
 basecamp search "<query>" --in <project> --type todo      # Scope by project and content type
 basecamp search "<query>" --since last_30_days            # last_7_days, last_30_days, last_90_days, last_12_months, forever
 basecamp search "<query>" --creator me --file-type pdf    # Filter by author or attachment type
@@ -854,17 +855,16 @@ basecamp messages show <id> --no-comments --json                  # Suppress com
 
 ## Configuration
 
-The CLI uses two directory namespaces: `basecamp` for your Basecamp identity and project relationships, `basecamp` for tool-specific operational data.
+OAuth tokens live in the system keyring, not on disk — there is no credentials file to read, and you should never try. `basecamp doctor --json` reports the real locations and whether each exists.
 
 ```
-~/.config/basecamp/           # Basecamp identity (DO NOT read credentials)
-├── credentials.json          #   OAuth tokens — NEVER read or log
-├── client.json               #   DCR client registration
+~/.config/basecamp/           # Global settings (may not exist; defaults apply)
 └── config.json               #   Global preferences (account_id, base_url, format)
 
 ~/.cache/basecamp/            # Tool cache (ephemeral, auto-managed)
 ├── completion.json           #   Tab completion cache
-└── resilience/               #   Circuit breaker state
+├── etags.json                #   Conditional-request cache
+└── responses/                #   Cached response bodies
 
 .basecamp/                    # Per-repo config (committed to git)
 └── config.json               #   Project defaults (project_id, account_id, todolist_id)
@@ -917,14 +917,15 @@ basecamp doctor --json                            # Check CLI health, auth, conn
 ```bash
 basecamp auth status                              # Check auth
 basecamp auth login                               # Re-authenticate
-basecamp auth login --scope full                  # Full access (BC3 OAuth only)
+basecamp auth login --scope full                  # Full access (the v0.9.0 default; Launchpad ignores --scope)
+basecamp auth login --scope read                  # Read-only token
 basecamp auth login --device-code                 # Headless: display URL, paste callback
 ```
 
 **Network errors / localhost URLs:**
 ```bash
-# Check for dev config
-cat ~/.config/basecamp/config.json
+# Check for dev config (the file is optional; absence is normal)
+cat ~/.config/basecamp/config.json 2>/dev/null || echo "No global config"
 # Should only contain: {"account_id": "<id>"}
 # Remove base_url/api_url if pointing to localhost
 ```
@@ -932,8 +933,10 @@ cat ~/.config/basecamp/config.json
 **Not found errors:**
 ```bash
 basecamp auth status                              # Verify auth working
-cat ~/.config/basecamp/accounts.json              # Check available accounts
+basecamp accounts list --json                     # Check available accounts (works without --account)
 ```
+
+A `Not Found` on a valid-looking ID usually means the wrong account, not a missing record. Confirm the ID belongs to the account you passed.
 
 **Required arguments are positional (not flags):**
 - `basecamp todo "Buy milk"` (not `--content`)
